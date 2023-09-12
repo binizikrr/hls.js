@@ -28,6 +28,7 @@ See [API Reference](https://hlsjs-dev.video-dev.org/api-docs/) for a complete li
   - [`initialLiveManifestSize`](#initiallivemanifestsize)
   - [`maxBufferLength`](#maxbufferlength)
   - [`backBufferLength`](#backbufferlength)
+  - [`frontBufferFlushThreshold`](#frontbufferflushthreshold)
   - [`maxBufferSize`](#maxbuffersize)
   - [`maxBufferHole`](#maxbufferhole)
   - [`maxStarvationDelay`](#maxstarvationdelay)
@@ -64,6 +65,7 @@ See [API Reference](https://hlsjs-dev.video-dev.org/api-docs/) for a complete li
       - [`retryDelayMs: number`](#retrydelayms-number)
       - [`maxRetryDelayMs: number`](#maxretrydelayms-number)
       - [`backoff?: 'exponential' | 'linear'`](#backoff-exponential--linear)
+      - [`shouldRetry`](#shouldretry)
   - [`startFragPrefetch`](#startfragprefetch)
   - [`testBandwidth`](#testbandwidth)
   - [`progressive`](#progressive)
@@ -129,6 +131,7 @@ See [API Reference](https://hlsjs-dev.video-dev.org/api-docs/) for a complete li
   - [`hls.loadLevel`](#hlsloadlevel)
   - [`hls.nextLoadLevel`](#hlsnextloadlevel)
   - [`hls.firstLevel`](#hlsfirstlevel)
+  - [`hls.firstAutoLevel`](#hlsfirstautolevel)
   - [`hls.startLevel`](#hlsstartlevel)
   - [`hls.autoLevelEnabled`](#hlsautolevelenabled)
   - [`hls.autoLevelCapping`](#hlsautolevelcapping)
@@ -206,7 +209,13 @@ Let's
 <script>
   if (Hls.isSupported()) {
     var video = document.getElementById('video');
+
+    // If you are using the ESM version of the library (hls.mjs), you
+    // should specify the "workerPath" config option here if you want
+    // web workers to be used. Note that bundlers (such as webpack)
+    // will likely use the ESM version by default.
     var hls = new Hls();
+
     // bind them together
     hls.attachMedia(video);
     // MEDIA_ATTACHED event is fired by hls object once MediaSource is ready
@@ -234,7 +243,7 @@ You need to provide manifest URL as below:
     });
     hls.on(Hls.Events.MANIFEST_PARSED, function (event, data) {
       console.log(
-        'manifest loaded, found ' + data.levels.length + ' quality level'
+        'manifest loaded, found ' + data.levels.length + ' quality level',
       );
     });
     hls.loadSource('http://my.streamURL.com/playlist.m3u8');
@@ -356,6 +365,7 @@ var config = {
   maxBufferLength: 30,
   maxMaxBufferLength: 600,
   backBufferLength: Infinity,
+  frontBufferFlushThreshold: Infinity,
   maxBufferSize: 60 * 1000 * 1000,
   maxBufferHole: 0.5,
   highBufferWatchdogPeriod: 2,
@@ -509,6 +519,12 @@ This is the guaranteed buffer length hls.js will try to reach, regardless of max
 (default: `Infinity`)
 
 The maximum duration of buffered media to keep once it has been played, in seconds. Any video buffered past this duration will be evicted. `Infinity` means no restriction on back buffer length; `0` keeps the minimum amount. The minimum amount is equal to the target duration of a segment to ensure that current playback is not interrupted.
+
+### `frontBufferFlushThreshold`
+
+(default: `Infinity`)
+
+The maximum duration of buffered media, in seconds, from the play position to keep before evicting non-contiguous forward ranges. A value of `Infinity` means no active eviction will take place; This value will always be at least the `maxBufferLength`.
 
 ### `maxBufferSize`
 
@@ -667,6 +683,8 @@ Enable WebWorker (if available on browser) for TS demuxing/MP4 remuxing, to impr
 (default: `null`)
 
 Provide a path to hls.worker.js as an alternative to injecting the worker based on the iife library wrapper function. When `workerPath` is defined as a string, the transmuxer interface will initialize a WebWorker using the resolved `workerPath` URL.
+
+When using the ESM version of the library (hls.mjs), this option is required in order for web workers to be used.
 
 ### `enableSoftwareAES`
 
@@ -869,6 +887,12 @@ Maximum delay between retries in milliseconds. With each retry, the delay is inc
 ##### `backoff?: 'exponential' | 'linear'`
 
 Used to determine retry backoff duration: Retry delay = 2^retryCount \* retryDelayMs (exponential).
+
+##### `shouldRetry`
+
+(default: internal shouldRetry function, type: `(retryConfig: RetryConfig | null | undefined, retryCount: number, isTimeout: boolean, httpStatus: number | undefined,retry: boolean) => boolean`)
+
+Override default shouldRetry check
 
 ### `startFragPrefetch`
 
@@ -1593,7 +1617,11 @@ Set to `-1` for automatic level selection.
 
 ### `hls.firstLevel`
 
-- get: First level index (index of first level appearing in Manifest. it is usually defined as start level hint for player).
+- get: First level index (index of the first Variant appearing in the Multivariant Playlist).
+
+### `hls.firstAutoLevel`
+
+- get: Return quality level that will be used to load the first fragment when not overridden by `startLevel`.
 
 ### `hls.startLevel`
 
@@ -2020,12 +2048,35 @@ See sample `Level` object below:
 
 ```js
 {
-  url: [ 'http://levelURL.com', 'http://levelURLfailover.com' ],
-  bitrate: 246440,
-  name: "240",
-  codecs: "mp4a.40.5,avc1.42000d",
-  width: 320,
-  height: 136,
+  audioCodec: "mp4a.40.2"
+  audioGroupIds: <string[]> | undefined,
+  bitrate: 3000000,
+  codecSet: "avc1,mp4a",
+  details: <LevelDetails> | undefined
+  fragmentError: 0,
+  frameRate: 30,
+  height: 720,
+  loadError: 0
+  name: "720p",
+  realBitrate: 0,
+  supportedPromise: undefined,
+  supportedResult: {supported: true, configurations: <MediaDecodingConfiguration[]>, decodingInfoResults: <MediaCapabilitiesDecodingInfo[]>}
+  textGroupIds: <string[]> | undefined,
+  unknownCodecs: [],
+  url: [ "http://levelURL.com", "http://levelURLfailover.com" ],
+  videoCodec: "avc1.66.30",
+  width: 1280,
+  attrs: <AttrList>,
+  audioGroupId: undefined,
+  averageBitrate: 2962000,
+  codecs: "avc1.66.30,mp4a.40.2",
+  maxBitrate: 3000000,
+  pathwayId: ".",
+  score: 0,
+  textGroupId: "subs",
+  uri: "http://levelURL.com",
+  urlId: 0,
+  videoRange: "SDR"
 }
 ```
 
@@ -2075,6 +2126,7 @@ See sample object below:
 {
   duration: 10,
   level: 3,
+  cc: 0
   sn: 35,
   start: 30,
   url: 'http://fragURL.com'

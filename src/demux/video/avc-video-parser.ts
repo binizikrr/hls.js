@@ -8,10 +8,8 @@ import {
   appendUint8Array,
   parseSEIMessageFromNALu,
 } from '../../utils/mp4-tools';
-
-import type { PES } from '../tsdemuxer';
-
 import ExpGolomb from './exp-golomb';
+import type { PES } from '../tsdemuxer';
 
 class AvcVideoParser extends BaseVideoParser {
   public parseAVCPES(
@@ -19,7 +17,7 @@ class AvcVideoParser extends BaseVideoParser {
     textTrack: DemuxedUserdataTrack,
     pes: PES,
     last: boolean,
-    duration: number
+    duration: number,
   ) {
     const units = this.parseAVCNALu(track, pes.data);
     const debug = false;
@@ -37,7 +35,7 @@ class AvcVideoParser extends BaseVideoParser {
         false,
         pes.pts,
         pes.dts,
-        ''
+        '',
       );
     }
 
@@ -80,7 +78,7 @@ class AvcVideoParser extends BaseVideoParser {
               true,
               pes.pts,
               pes.dts,
-              ''
+              '',
             );
           }
 
@@ -107,7 +105,7 @@ class AvcVideoParser extends BaseVideoParser {
               true,
               pes.pts,
               pes.dts,
-              ''
+              '',
             );
           }
 
@@ -128,22 +126,28 @@ class AvcVideoParser extends BaseVideoParser {
             unit.data,
             1,
             pes.pts as number,
-            textTrack.samples
+            textTrack.samples,
           );
           break;
           // SPS
         }
-        case 7:
+        case 7: {
           push = true;
           spsfound = true;
           if (debug && VideoSample) {
             VideoSample.debug += 'SPS ';
           }
+          const sps = unit.data;
+          const expGolombDecoder = new ExpGolomb(sps);
+          const config = expGolombDecoder.readSPS();
 
-          if (!track.sps) {
-            const sps = unit.data;
-            const expGolombDecoder = new ExpGolomb(sps);
-            const config = expGolombDecoder.readSPS();
+          if (
+            !track.sps ||
+            track.width !== config.width ||
+            track.height !== config.height ||
+            track.pixelRatio?.[0] !== config.pixelRatio[0] ||
+            track.pixelRatio?.[1] !== config.pixelRatio[1]
+          ) {
             track.width = config.width;
             track.height = config.height;
             track.pixelRatio = config.pixelRatio;
@@ -161,7 +165,9 @@ class AvcVideoParser extends BaseVideoParser {
             }
             track.codec = codecstring;
           }
+
           break;
+        }
         // PPS
         case 8:
           push = true;
@@ -169,9 +175,7 @@ class AvcVideoParser extends BaseVideoParser {
             VideoSample.debug += 'PPS ';
           }
 
-          if (!track.pps) {
-            track.pps = [unit.data];
-          }
+          track.pps = [unit.data];
 
           break;
         // AUD
@@ -186,7 +190,7 @@ class AvcVideoParser extends BaseVideoParser {
             false,
             pes.pts,
             pes.dts,
-            debug ? 'AUD ' : ''
+            debug ? 'AUD ' : '',
           );
           break;
         // Filler Data
@@ -215,7 +219,7 @@ class AvcVideoParser extends BaseVideoParser {
 
   private parseAVCNALu(
     track: DemuxedVideoTrack,
-    array: Uint8Array
+    array: Uint8Array,
   ): Array<{
     data: Uint8Array;
     type: number;
@@ -280,7 +284,7 @@ class AvcVideoParser extends BaseVideoParser {
                 // strip last bytes
                 lastUnit.data = lastUnit.data.subarray(
                   0,
-                  lastUnit.data.byteLength - lastState
+                  lastUnit.data.byteLength - lastState,
                 );
               }
             }
@@ -290,7 +294,7 @@ class AvcVideoParser extends BaseVideoParser {
               // logger.log('first NALU found with overflow:' + overflow);
               lastUnit.data = appendUint8Array(
                 lastUnit.data,
-                array.subarray(0, overflow)
+                array.subarray(0, overflow),
               );
               lastUnit.state = 0;
             }

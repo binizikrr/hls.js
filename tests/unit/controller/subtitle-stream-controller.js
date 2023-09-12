@@ -5,9 +5,9 @@ import { Events } from '../../../src/events';
 import { FragmentTracker } from '../../../src/controller/fragment-tracker';
 import { Fragment } from '../../../src/loader/fragment';
 import { PlaylistLevelType } from '../../../src/types/loader';
+import { AttrList } from '../../../src/utils/attr-list';
 import KeyLoader from '../../../src/loader/key-loader';
 import { SubtitleStreamController } from '../../../src/controller/subtitle-stream-controller';
-import { AttrList } from '../../../src/utils/attr-list';
 
 const mediaMock = {
   currentTime: 0,
@@ -42,7 +42,7 @@ describe('SubtitleStreamController', function () {
     subtitleStreamController = new SubtitleStreamController(
       hls,
       fragmentTracker,
-      keyLoader
+      keyLoader,
     );
 
     subtitleStreamController.onMediaAttached(Events.MEDIA_ATTACHED, {
@@ -147,13 +147,13 @@ describe('SubtitleStreamController', function () {
     it('nulls fragPrevious when seeking away from fragCurrent', function () {
       subtitleStreamController.fragCurrent = new Fragment(
         PlaylistLevelType.MAIN,
-        ''
+        '',
       );
       subtitleStreamController.fragCurrent.start = 1000;
       subtitleStreamController.fragCurrent.duration = 10;
       subtitleStreamController.fragPrevious = new Fragment(
         PlaylistLevelType.MAIN,
-        ''
+        '',
       );
       subtitleStreamController.onMediaSeeking();
       expect(subtitleStreamController.fragPrevious).to.not.exist;

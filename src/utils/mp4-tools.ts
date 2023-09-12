@@ -352,7 +352,7 @@ function parseStsd(stsd: Uint8Array): { codec: string; encrypted: boolean } {
     }
     case 'av01': {
       const av1CBox = findBox(sampleEntriesEnd, ['av1C'])[0];
-      const profile = av1CBox[1] >>> 3;
+      const profile = av1CBox[1] >>> 5;
       const level = av1CBox[1] & 0x1f;
       const tierFlag = av1CBox[2] >>> 7 ? 'H' : 'M';
       const highBitDepth = (av1CBox[2] & 0x40) >> 6;
@@ -369,6 +369,13 @@ function parseStsd(stsd: Uint8Array): { codec: string; encrypted: boolean } {
       const chromaSubsamplingX = (av1CBox[2] & 0x08) >> 3;
       const chromaSubsamplingY = (av1CBox[2] & 0x04) >> 2;
       const chromaSamplePosition = av1CBox[2] & 0x03;
+      // TODO: parse color_description_present_flag
+      // default it to BT.709/limited range for now
+      // more info https://aomediacodec.github.io/av1-isobmff/#av1codecconfigurationbox-syntax
+      const colorPrimaries = 1;
+      const transferCharacteristics = 1;
+      const matrixCoefficients = 1;
+      const videoFullRangeFlag = 0;
       codec +=
         '.' +
         profile +
@@ -382,7 +389,15 @@ function parseStsd(stsd: Uint8Array): { codec: string; encrypted: boolean } {
         '.' +
         chromaSubsamplingX +
         chromaSubsamplingY +
-        chromaSamplePosition;
+        chromaSamplePosition +
+        '.' +
+        addLeadingZero(colorPrimaries) +
+        '.' +
+        addLeadingZero(transferCharacteristics) +
+        '.' +
+        addLeadingZero(matrixCoefficients) +
+        '.' +
+        videoFullRangeFlag;
       break;
     }
     case 'ac-3':
@@ -406,7 +421,7 @@ function addLeadingZero(num: number): string {
 
 export function patchEncyptionData(
   initSegment: Uint8Array | undefined,
-  decryptdata: DecryptData | null
+  decryptdata: DecryptData | null,
 ): Uint8Array | undefined {
   if (!initSegment || !decryptdata) {
     return initSegment;
@@ -437,8 +452,8 @@ export function patchEncyptionData(
                 `[eme] Patching keyId in 'enc${
                   isAudio ? 'a' : 'v'
                 }>sinf>>tenc' box: ${Hex.hexDump(tencKeyId)} -> ${Hex.hexDump(
-                  keyId
-                )}`
+                  keyId,
+                )}`,
               );
               tenc.set(keyId, 8);
             }
@@ -482,7 +497,7 @@ export function parseSinf(sinf: Uint8Array): Uint8Array | null {
  */
 export function getStartDTS(
   initData: InitData,
-  fmp4: Uint8Array
+  fmp4: Uint8Array,
 ): number | null {
   // we need info from two children of each track fragment box
   return findBox(fmp4, ['moof', 'traf']).reduce(
@@ -502,7 +517,7 @@ export function getStartDTS(
               // https://github.com/video-dev/hls.js/issues/5303
               if (baseTime === UINT32_MAX) {
                 logger.warn(
-                  `[mp4-demuxer]: Ignoring assumed invalid signed 64-bit track fragment decode time`
+                  `[mp4-demuxer]: Ignoring assumed invalid signed 64-bit track fragment decode time`,
                 );
                 return result;
               }
@@ -522,7 +537,7 @@ export function getStartDTS(
           }
           return result;
         },
-        null
+        null,
       );
       if (
         start !== null &&
@@ -533,7 +548,7 @@ export function getStartDTS(
       }
       return result;
     },
-    null
+    null,
   );
 }
 
@@ -607,7 +622,7 @@ export function getDuration(data: Uint8Array, initData: InitData) {
       if (sidx?.references) {
         sidxDuration += sidx.references.reduce(
           (dur, ref) => dur + ref.info.duration || 0,
-          0
+          0,
         );
       }
     }
@@ -682,7 +697,7 @@ export function computeRawDurationFromSamples(trun): number {
 export function offsetStartDTS(
   initData: InitData,
   fmp4: Uint8Array,
-  timeOffset: number
+  timeOffset: number,
 ) {
   findBox(fmp4, ['moof', 'traf']).forEach((traf) => {
     findBox(traf, ['tfhd']).forEach((tfhd) => {
@@ -697,21 +712,23 @@ export function offsetStartDTS(
       // get the base media decode time from the tfdt
       findBox(traf, ['tfdt']).forEach((tfdt) => {
         const version = tfdt[0];
-        let baseMediaDecodeTime = readUint32(tfdt, 4);
-
-        if (version === 0) {
-          baseMediaDecodeTime -= timeOffset * timescale;
-          baseMediaDecodeTime = Math.max(baseMediaDecodeTime, 0);
-          writeUint32(tfdt, 4, baseMediaDecodeTime);
-        } else {
-          baseMediaDecodeTime *= Math.pow(2, 32);
-          baseMediaDecodeTime += readUint32(tfdt, 8);
-          baseMediaDecodeTime -= timeOffset * timescale;
-          baseMediaDecodeTime = Math.max(baseMediaDecodeTime, 0);
-          const upper = Math.floor(baseMediaDecodeTime / (UINT32_MAX + 1));
-          const lower = Math.floor(baseMediaDecodeTime % (UINT32_MAX + 1));
-          writeUint32(tfdt, 4, upper);
-          writeUint32(tfdt, 8, lower);
+        const offset = timeOffset * timescale;
+        if (offset) {
+          let baseMediaDecodeTime = readUint32(tfdt, 4);
+          if (version === 0) {
+            baseMediaDecodeTime -= offset;
+            baseMediaDecodeTime = Math.max(baseMediaDecodeTime, 0);
+            writeUint32(tfdt, 4, baseMediaDecodeTime);
+          } else {
+            baseMediaDecodeTime *= Math.pow(2, 32);
+            baseMediaDecodeTime += readUint32(tfdt, 8);
+            baseMediaDecodeTime -= offset;
+            baseMediaDecodeTime = Math.max(baseMediaDecodeTime, 0);
+            const upper = Math.floor(baseMediaDecodeTime / (UINT32_MAX + 1));
+            const lower = Math.floor(baseMediaDecodeTime % (UINT32_MAX + 1));
+            writeUint32(tfdt, 4, upper);
+            writeUint32(tfdt, 8, lower);
+          }
         }
       });
     });
@@ -746,7 +763,7 @@ export interface SegmentedRange {
 
 export function appendUint8Array(
   data1: Uint8Array,
-  data2: Uint8Array
+  data2: Uint8Array,
 ): Uint8Array {
   const temp = new Uint8Array(data1.length + data2.length);
   temp.set(data1);
@@ -768,7 +785,7 @@ export interface IEmsgParsingData {
 
 export function parseSamples(
   timeOffset: number,
-  track: PassthroughTrack
+  track: PassthroughTrack,
 ): UserdataSample[] {
   const seiSamples = [] as UserdataSample[];
   const videoData = track.samples;
@@ -888,13 +905,13 @@ export function parseSamples(
                   if (isSEIMessage(isHEVCFlavor, videoData[sampleOffset])) {
                     const data = videoData.subarray(
                       sampleOffset,
-                      sampleOffset + naluSize
+                      sampleOffset + naluSize,
                     );
                     parseSEIMessageFromNALu(
                       data,
                       isHEVCFlavor ? 2 : 1,
                       timeOffset + compositionOffset / timescale,
-                      seiSamples
+                      seiSamples,
                     );
                   }
                   sampleOffset += naluSize;
@@ -941,7 +958,7 @@ export function parseSEIMessageFromNALu(
   unescapedData: Uint8Array,
   headerSize: number,
   pts: number,
-  samples: UserdataSample[]
+  samples: UserdataSample[],
 ) {
   const data = discardEPB(unescapedData);
   let seiPtr = 0;
@@ -1134,7 +1151,7 @@ export function parseEmsg(data: Uint8Array): IEmsgParsingData {
     if (!Number.isSafeInteger(presentationTime)) {
       presentationTime = Number.MAX_SAFE_INTEGER;
       logger.warn(
-        'Presentation time exceeds safe integer limit and wrapped to max safe integer in parsing emsg box'
+        'Presentation time exceeds safe integer limit and wrapped to max safe integer in parsing emsg box',
       );
     }
 
@@ -1196,7 +1213,7 @@ export function mp4Box(type: ArrayLike<number>, ...payload: Uint8Array[]) {
 export function mp4pssh(
   systemId: Uint8Array,
   keyids: Array<Uint8Array> | null,
-  data: Uint8Array
+  data: Uint8Array,
 ) {
   if (systemId.byteLength !== 16) {
     throw new RangeError('Invalid system id');
@@ -1242,7 +1259,7 @@ export function mp4pssh(
     kidCount,
     kids,
     dataSize,
-    data || new Uint8Array()
+    data || new Uint8Array(),
   );
 }
 
