@@ -9,6 +9,7 @@ import type {
   BufferCodecsData,
   MediaAttachingData,
   FPSDropLevelCappingData,
+  LevelsUpdatedData,
 } from '../types/events';
 import StreamController from './stream-controller';
 import { logger } from '../utils/logger';
@@ -43,8 +44,10 @@ class CapLevelController implements ComponentAPI {
   }
 
   public destroy() {
-    this.unregisterListener();
-    if (this.hls.config.capLevelToPlayerSize) {
+    if (this.hls) {
+      this.unregisterListener();
+    }
+    if (this.timer) {
       this.stopCapping();
     }
     this.media = null;
@@ -58,6 +61,7 @@ class CapLevelController implements ComponentAPI {
     hls.on(Events.FPS_DROP_LEVEL_CAPPING, this.onFpsDropLevelCapping, this);
     hls.on(Events.MEDIA_ATTACHING, this.onMediaAttaching, this);
     hls.on(Events.MANIFEST_PARSED, this.onManifestParsed, this);
+    hls.on(Events.LEVELS_UPDATED, this.onLevelsUpdated, this);
     hls.on(Events.BUFFER_CODECS, this.onBufferCodecs, this);
     hls.on(Events.MEDIA_DETACHING, this.onMediaDetaching, this);
   }
@@ -67,13 +71,14 @@ class CapLevelController implements ComponentAPI {
     hls.off(Events.FPS_DROP_LEVEL_CAPPING, this.onFpsDropLevelCapping, this);
     hls.off(Events.MEDIA_ATTACHING, this.onMediaAttaching, this);
     hls.off(Events.MANIFEST_PARSED, this.onManifestParsed, this);
+    hls.off(Events.LEVELS_UPDATED, this.onLevelsUpdated, this);
     hls.off(Events.BUFFER_CODECS, this.onBufferCodecs, this);
     hls.off(Events.MEDIA_DETACHING, this.onMediaDetaching, this);
   }
 
   protected onFpsDropLevelCapping(
     event: Events.FPS_DROP_LEVEL_CAPPING,
-    data: FPSDropLevelCappingData
+    data: FPSDropLevelCappingData,
   ) {
     // Don't add a restricted level more than once
     const level = this.hls.levels[data.droppedLevel];
@@ -88,15 +93,18 @@ class CapLevelController implements ComponentAPI {
 
   protected onMediaAttaching(
     event: Events.MEDIA_ATTACHING,
-    data: MediaAttachingData
+    data: MediaAttachingData,
   ) {
     this.media = data.media instanceof HTMLVideoElement ? data.media : null;
     this.clientRect = null;
+    if (this.timer && this.hls.levels.length) {
+      this.detectPlayerSize();
+    }
   }
 
   protected onManifestParsed(
     event: Events.MANIFEST_PARSED,
-    data: ManifestParsedData
+    data: ManifestParsedData,
   ) {
     const hls = this.hls;
     this.restrictedLevels = [];
@@ -107,11 +115,20 @@ class CapLevelController implements ComponentAPI {
     }
   }
 
+  private onLevelsUpdated(
+    event: Events.LEVELS_UPDATED,
+    data: LevelsUpdatedData,
+  ) {
+    if (this.timer && Number.isFinite(this.autoLevelCapping)) {
+      this.detectPlayerSize();
+    }
+  }
+
   // Only activate capping when playing a video stream; otherwise, multi-bitrate audio-only streams will be restricted
   // to the first level
   protected onBufferCodecs(
     event: Events.BUFFER_CODECS,
-    data: BufferCodecsData
+    data: BufferCodecsData,
   ) {
     const hls = this.hls;
     if (hls.config.capLevelToPlayerSize && data.video) {
@@ -136,7 +153,7 @@ class CapLevelController implements ComponentAPI {
         const maxLevel = this.getMaxLevel(levels.length - 1);
         if (maxLevel !== this.autoLevelCapping) {
           logger.log(
-            `Setting autoLevelCapping to ${maxLevel}: ${levels[maxLevel].height}p@${levels[maxLevel].bitrate} for media ${this.mediaWidth}x${this.mediaHeight}`
+            `Setting autoLevelCapping to ${maxLevel}: ${levels[maxLevel].height}p@${levels[maxLevel].bitrate} for media ${this.mediaWidth}x${this.mediaHeight}`,
           );
         }
         hls.autoLevelCapping = maxLevel;
@@ -163,14 +180,14 @@ class CapLevelController implements ComponentAPI {
     }
 
     const validLevels = levels.filter(
-      (level, index) => this.isLevelAllowed(level) && index <= capLevelIndex
+      (level, index) => this.isLevelAllowed(level) && index <= capLevelIndex,
     );
 
     this.clientRect = null;
     return CapLevelController.getMaxLevelByMediaSize(
       validLevels,
       this.mediaWidth,
-      this.mediaHeight
+      this.mediaHeight,
     );
   }
 
@@ -180,7 +197,6 @@ class CapLevelController implements ComponentAPI {
       return;
     }
     this.autoLevelCapping = Number.POSITIVE_INFINITY;
-    this.hls.firstLevel = this.getMaxLevel(this.firstLevel);
     self.clearInterval(this.timer);
     this.timer = self.setInterval(this.detectPlayerSize.bind(this), 1000);
     this.detectPlayerSize();
@@ -258,7 +274,7 @@ class CapLevelController implements ComponentAPI {
   static getMaxLevelByMediaSize(
     levels: Array<Level>,
     width: number,
-    height: number
+    height: number,
   ): number {
     if (!levels?.length) {
       return -1;
@@ -266,7 +282,10 @@ class CapLevelController implements ComponentAPI {
 
     // Levels can have the same dimensions but differing bandwidths - since levels are ordered, we can look to the next
     // to determine whether we've chosen the greatest bandwidth for the media's dimensions
-    const atGreatestBandwidth = (curLevel, nextLevel) => {
+    const atGreatestBandwidth = (
+      curLevel: Level,
+      nextLevel: Level | undefined,
+    ) => {
       if (!nextLevel) {
         return true;
       }

@@ -260,7 +260,7 @@ class MP4 {
       majorBrand,
       minorVersion,
       majorBrand,
-      avc1Brand
+      avc1Brand,
     );
     MP4.DINF = MP4.box(MP4.types.dinf, MP4.box(MP4.types.dref, dref));
   }
@@ -340,7 +340,7 @@ class MP4 {
         0xc4, // 'und' language (undetermined)
         0x00,
         0x00,
-      ])
+      ]),
     );
   }
 
@@ -349,7 +349,7 @@ class MP4 {
       MP4.types.mdia,
       MP4.mdhd(track.timescale, track.duration),
       MP4.hdlr(track.type),
-      MP4.minf(track)
+      MP4.minf(track),
     );
   }
 
@@ -365,7 +365,7 @@ class MP4 {
         (sequenceNumber >> 16) & 0xff,
         (sequenceNumber >> 8) & 0xff,
         sequenceNumber & 0xff, // sequence_number
-      ])
+      ]),
     );
   }
 
@@ -375,14 +375,14 @@ class MP4 {
         MP4.types.minf,
         MP4.box(MP4.types.smhd, MP4.SMHD),
         MP4.DINF,
-        MP4.stbl(track)
+        MP4.stbl(track),
       );
     } else {
       return MP4.box(
         MP4.types.minf,
         MP4.box(MP4.types.vmhd, MP4.VMHD),
         MP4.DINF,
-        MP4.stbl(track)
+        MP4.stbl(track),
       );
     }
   }
@@ -391,7 +391,7 @@ class MP4 {
     return MP4.box(
       MP4.types.moof,
       MP4.mfhd(sn),
-      MP4.traf(track, baseMediaDecodeTime)
+      MP4.traf(track, baseMediaDecodeTime),
     );
   }
 
@@ -407,7 +407,7 @@ class MP4 {
       null,
       [MP4.types.moov, MP4.mvhd(tracks[0].timescale, tracks[0].duration)]
         .concat(boxes)
-        .concat(MP4.mvex(tracks))
+        .concat(MP4.mvex(tracks)),
     );
   }
 
@@ -568,7 +568,7 @@ class MP4 {
       MP4.box(MP4.types.stts, MP4.STTS),
       MP4.box(MP4.types.stsc, MP4.STSC),
       MP4.box(MP4.types.stsz, MP4.STSZ),
-      MP4.box(MP4.types.stco, MP4.STCO)
+      MP4.box(MP4.types.stco, MP4.STCO),
     );
   }
 
@@ -615,8 +615,8 @@ class MP4 {
           .concat([
             track.pps.length, // numOfPictureParameterSets
           ])
-          .concat(pps)
-      )
+          .concat(pps),
+      ),
     ); // "PPS"
     const width = track.width;
     const height = track.height;
@@ -721,7 +721,7 @@ class MP4 {
           0x2d,
           0xc6,
           0xc0,
-        ])
+        ]),
       ), // avgBitrate
       MP4.box(
         MP4.types.pasp,
@@ -734,8 +734,8 @@ class MP4 {
           (vSpacing >> 16) & 0xff,
           (vSpacing >> 8) & 0xff,
           vSpacing & 0xff,
-        ])
-      )
+        ]),
+      ),
     );
   }
   static hvc1(track) {
@@ -839,7 +839,7 @@ class MP4 {
       ]
         .concat([configlen])
         .concat(track.config)
-        .concat([0x06, 0x01, 0x02])
+        .concat([0x06, 0x01, 0x02]),
     ); // GASpecificConfig)); // length + audio config descriptor
   }
 
@@ -881,7 +881,7 @@ class MP4 {
     return MP4.box(
       MP4.types.mp4a,
       MP4.audioStsd(track),
-      MP4.box(MP4.types.esds, MP4.esds(track))
+      MP4.box(MP4.types.esds, MP4.esds(track)),
     );
   }
 
@@ -893,7 +893,7 @@ class MP4 {
     return MP4.box(
       MP4.types['ac-3'],
       MP4.audioStsd(track),
-      MP4.box(MP4.types.dac3, track.config)
+      MP4.box(MP4.types.dac3, track.config),
     );
   }
 
@@ -1019,7 +1019,7 @@ class MP4 {
         height & 0xff,
         0x00,
         0x00, // height
-      ])
+      ]),
     );
   }
 
@@ -1027,10 +1027,10 @@ class MP4 {
     const sampleDependencyTable = MP4.sdtp(track);
     const id = track.id;
     const upperWordBaseMediaDecodeTime = Math.floor(
-      baseMediaDecodeTime / (UINT32_MAX + 1)
+      baseMediaDecodeTime / (UINT32_MAX + 1),
     );
     const lowerWordBaseMediaDecodeTime = Math.floor(
-      baseMediaDecodeTime % (UINT32_MAX + 1)
+      baseMediaDecodeTime % (UINT32_MAX + 1),
     );
     return MP4.box(
       MP4.types.traf,
@@ -1045,7 +1045,7 @@ class MP4 {
           (id >> 16) & 0xff,
           (id >> 8) & 0xff,
           id & 0xff, // track_ID
-        ])
+        ]),
       ),
       MP4.box(
         MP4.types.tfdt,
@@ -1062,19 +1062,19 @@ class MP4 {
           (lowerWordBaseMediaDecodeTime >> 16) & 0xff,
           (lowerWordBaseMediaDecodeTime >> 8) & 0xff,
           lowerWordBaseMediaDecodeTime & 0xff,
-        ])
+        ]),
       ),
       MP4.trun(
         track,
-        sampleDependencyTable.length +
-        16 + // tfhd
-        20 + // tfdt
-        8 + // traf header
-        16 + // mfhd
-        8 + // moof header
-        8
+          sampleDependencyTable.length +
+          16 + // tfhd
+          20 + // tfdt
+          8 + // traf header
+          16 + // mfhd
+          8 + // moof header
+          8,
       ), // mdat header
-      sampleDependencyTable
+      sampleDependencyTable,
     );
   }
 
@@ -1116,7 +1116,7 @@ class MP4 {
         0x01,
         0x00,
         0x01, // default_sample_flags
-      ])
+      ]),
     );
   }
 
@@ -1147,7 +1147,7 @@ class MP4 {
         (offset >>> 8) & 0xff,
         offset & 0xff, // data_offset
       ],
-      0
+      0,
     );
     for (i = 0; i < len; i++) {
       sample = samples[i];
@@ -1177,7 +1177,7 @@ class MP4 {
           (cts >>> 8) & 0xff,
           cts & 0xff, // sample_composition_time_offset
         ],
-        12 + 16 * i
+        12 + 16 * i,
       );
     }
     return MP4.box(MP4.types.trun, array);

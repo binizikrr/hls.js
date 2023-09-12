@@ -337,8 +337,8 @@ class ExpGolomb {
     return {
       width: Math.ceil(
         (picWidthInMbsMinus1 + 1) * 16 -
-        frameCropLeftOffset * 2 -
-        frameCropRightOffset * 2
+          frameCropLeftOffset * 2 -
+          frameCropRightOffset * 2,
       ),
       height:
         (2 - frameMbsOnlyFlag) * (picHeightInMapUnitsMinus1 + 1) * 16 -
